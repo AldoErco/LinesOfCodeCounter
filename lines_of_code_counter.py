@@ -14,42 +14,94 @@
 # Comment lines: 1770
 # Code lines:    10663
 
-# Change this value based on the comment symbol used in your programming
-# language.
-commentSymbol = "//"
+# This version adds:
+# -proper command line arguments mgmt with argparse
+# -multiple comments identifier
+# -multiple source directories
+# -auto file-encoding determination
+# -reformatted output for improved readability
 
-import sys
-import os, os.path
+# Many thanks to rrwick for the original script, quick, effective and useful 
 
-acceptableFileExtensions = sys.argv[1:]
+
+import argparse
+import os.path
+import codecs
+
+
+def is_comment(line_of_code):
+    global commentSymbols
+
+    result = False
+    for commentSymbol in commentSymbols:
+        if line_of_code.startswith(commentSymbol):
+            result = True
+            break
+    return result
+
+
+parser = argparse.ArgumentParser(description='Count lines of code')
+parser.add_argument('--exts', dest='extensions', metavar='N', type=str, nargs='+', help='list of extensions of files to parse')
+parser.add_argument('--comments', dest='comments', metavar='N', type=str, nargs='+', help='list of comments line indicators')
+parser.add_argument('--dirs', dest='dirs', metavar='N', type=str, nargs='+', help='directories to scan. If not specified takes current dir')
+
+args = parser.parse_args()
+acceptableFileExtensions = args.extensions
+commentSymbols = args.comments
+currentDirs = args.dirs
+
 if not acceptableFileExtensions:
-    print 'Please pass at least one file extension as an argument.'
+    print('Please pass at least one file extension as an argument, or --help for help.')
     quit()
 
-currentDir = os.getcwd()
+if not commentSymbols:
+    print('No comments symbol specified: there will be no comments count')
+
+if not currentDirs:
+    currentDirs = [os.getcwd()]
 
 filesToCheck = []
-for root, _, files in os.walk(currentDir):
-    for f in files:
-        fullpath = os.path.join(root, f)
-        if '.git' not in fullpath:
-            for extension in acceptableFileExtensions:
-            	if fullpath.endswith(extension):
-                    filesToCheck.append(fullpath)
+for currentDir in currentDirs:
+    for root, _, files in os.walk(currentDir):
+        for f in files:
+            fullpath = os.path.join(root, f)
+            if '.git' not in fullpath:
+                for extension in acceptableFileExtensions:
+                     if fullpath.endswith(extension):
+                        filesToCheck.append(fullpath)
 
 if not filesToCheck:
-    print 'No files found.'
+    print('No files found.')
     quit()
 
 lineCount = 0
 totalBlankLineCount = 0
 totalCommentLineCount = 0
 
-print ''
-print 'Filename\tlines\tblank lines\tcomment lines\tcode lines'
+print('Checking {num} files:'.format(num=len(filesToCheck)))
+print('')
+print('Lines\tBlank\tComment\tCode\tFilename')
+print('-------\t-------\t-------\t-------\t-------')
+
 
 for fileToCheck in filesToCheck:
-    with open(fileToCheck) as f:
+    # Try to determine file encoding
+    # you can add additional encodings here if necessary
+    encodings = ['utf-8', 'windows-1250', 'windows-1252', 'latin-1']
+    for e in encodings:
+        try:
+            fh = codecs.open(fileToCheck, 'r', encoding=e)
+            fh.readlines()
+            fh.seek(0)
+        except UnicodeDecodeError:
+            #print('got unicode error with %s , trying different encoding' % e)
+            fh.close()
+        else:
+            #print('opening the file with encoding:  %s ' % e)
+            fh.close()
+            break
+
+    with open(fileToCheck, encoding=e) as f:
 
         fileLineCount = 0
         fileBlankLineCount = 0
@@ -63,21 +115,21 @@ for fileToCheck in filesToCheck:
             if not lineWithoutWhitespace:
                 totalBlankLineCount += 1
                 fileBlankLineCount += 1
-            elif lineWithoutWhitespace.startswith(commentSymbol):
+            elif is_comment(lineWithoutWhitespace):
                 totalCommentLineCount += 1
                 fileCommentLineCount += 1
 
-        print os.path.basename(fileToCheck) + \
-              "\t" + str(fileLineCount) + \
+        print(str(fileLineCount) + \
               "\t" + str(fileBlankLineCount) + \
               "\t" + str(fileCommentLineCount) + \
-              "\t" + str(fileLineCount - fileBlankLineCount - fileCommentLineCount)
+              "\t" + str(fileLineCount - fileBlankLineCount - fileCommentLineCount) + \
+              "\t" + fileToCheck )
 
 
-print ''
-print 'Totals'
-print '--------------------'
-print 'Lines:         ' + str(lineCount)
-print 'Blank lines:   ' + str(totalBlankLineCount)
-print 'Comment lines: ' + str(totalCommentLineCount)
-print 'Code lines:    ' + str(lineCount - totalBlankLineCount - totalCommentLineCount)
+print('')
+print('Totals')
+print('--------------------')
+print('Lines:         ' + str(lineCount))
+print('Blank lines:   ' + str(totalBlankLineCount))
+print('Comment lines: ' + str(totalCommentLineCount))
+print('Code lines:    ' + str(lineCount - totalBlankLineCount - totalCommentLineCount))
